@@ -6,8 +6,8 @@ clear;
 folder = cd;
 folder = fullfile(folder, '..');
 folder = fullfile(folder, '\simulink');
-
-model_name = 'Pacejka_Tyre_Model';
+v = version('-release');
+model_name = ['Pacejka_Tyre_Model_' v];
 folder = fullfile(folder, ['\' model_name '.slx']);
 open(folder);
 

@@ -26,5 +26,3 @@ b5 = 0.17;
 b6 = 0;
 b7 = 0;
 b8 = 0.2;
-
-save('pacajeka_model_param');
