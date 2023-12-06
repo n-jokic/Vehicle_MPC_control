@@ -1,2 +1,4 @@
 #Ignore report
 izvesaj
+# ignore complined simulink
+slprj
