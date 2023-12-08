@@ -31,7 +31,7 @@ ds = createInputDataset(model_name);
 set_param(model_name,'LoadExternalInput','on');
 
 % Set the simulation stop time
-set_param(model_name, 'StopTime', num2str(1));  % Set stop time to 10 seconds
+set_param(model_name, 'StopTime', num2str(1));  % Set stop time to 1 seconds
 
 % Set the fixed step size
 set_param(model_name, 'SolverType', 'Fixed-step');
@@ -66,6 +66,7 @@ ylabel('$F_y$ [N]');
 % 
 % Initialize cell array for legend labels
 legend_labels = cell(length(mu), 1);
+
 
 i = 1;
 for mu_val = mu 
@@ -138,6 +139,8 @@ set(gcf, 'Renderer', 'Painters');
 if(SAVE)
     saveas(f,[save_path '\' f.Name '.eps'],'epsc');
 end
+
+
 
 % close without saving
 close_system(model_name, 0);
