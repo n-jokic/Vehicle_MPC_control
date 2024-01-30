@@ -1,21 +1,22 @@
 %% Model
 %          model parameters:    %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 g = 9.81; % gravitational acceleration
-m = 1; % [tonns]
-I = 1; % car inertia
-a = 2.5; % distance from CM to front tyres
-b = 2.5; % distance from CM to back tyres
-c = 2; % width of a car
+m = 1900; % [kg]
+a = 1.05; % distance from CM to front tyres
+b = 1.8-a; % distance from CM to back tyres
+I = m*a*b; % car inertia
+c = 1.5; % width of wheel axels
 friction = 0.9; %friction coeff
 
-r = 0.3; % diameter of a wheel 
-Idf = 1; % Inertia of front tyres
-Idr = 1; % Inerita of rear tyres
-Bd = 1; % tyre angular speed damping factor
+r = 0.3284; % diameter of a wheel 
+Idf = 0.805; % Inertia of front tyres
+Idr = 0.805; % Inerita of rear tyres
+Bd = 0.05; % tyre angular speed damping factor
 
-Fzf = b*m*g/2/(a+b); %force on front tyres
-Fzr = a*m*g/2/(a+b); %force on rear tyres
+Fzf = b*m*g/2/(a+b)/1000; % [kN] force on front tyres
+Fzr = a*m*g/2/(a+b)/1000; % [kN] force on rear tyres
 
 
 
