@@ -1,5 +1,5 @@
 addpath('C:\Users\Ivona\Desktop\CASADI\casadi-3.6.4-windows64-matlab2018b')
-import casadi.*
+%import casadi.*
 
 %% Model
 %          model parameters:    %
@@ -230,7 +230,7 @@ state_transition = casadi.Function('f', ...
     {'dot_states'}...
     );
 
-
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%
 delta_max = 10; %deg
 delta_min = -10; %deg
@@ -238,4 +238,79 @@ M_max = 10^3;%Nm
 M_min = -10^3; %Nm
 
 L = control(1)^2 + control(2)^2; % matrice S,Q?
+
+
+
+% Continuous time dynamics
+f1 = casadi.Function('f1', {states, control}, {state_transition(states, control),L}, ...
+    {'states', 'control'}, {'xdot','L'});
+%%
+N = 20;
+T = 10;
+% Formulate discrete time dynamics
+% Fixed step Runge-Kutta 4 integrator
+Mk = 4; % RK4 steps per interval
+DT = T/N/Mk;
+X0 = casadi.MX.sym('X0', 6);
+U = casadi.MX.sym('U', 2);
+X = X0;
+Q = 0;
+for j=1:Mk
+    [k1, k1_q] = f1(X, U);
+    [k2, k2_q] = f1(X + DT/2 * k1, U);
+    [k3, k3_q] = f1(X + DT/2 * k2, U);
+    [k4, k4_q] = f1(X + DT * k3, U);
+    X = X + DT/6 * (k1 + 2*k2 + 2*k3 + k4);
+    Q = Q + DT/6 * (k1_q + 2*k2_q + 2*k3_q + k4_q);
+end
+
+F = casadi.Function('F', {X0, U}, {X, Q}, {'x0', 'p'}, {'xf', 'qf'});
+%%
+% Start with an empty NLP
+w={};
+w0 = [];
+lbw = [];
+ubw = [];
+J = 0;
+g={};
+lbg = [];
+ubg = [];
+
+% "Lift" initial conditions ?
+X0 = casadi.MX.sym('X0', 6);
+w = {w{:}, X0};
+lbw = [lbw; -inf; -inf; -inf; -inf; -inf; -inf];
+ubw = [ubw; inf; inf; inf; inf; inf; inf];
+w0 = [w0; 0; 0; 0; 0; 0; 0];
+
+% Formulate the NLP
+Xk = X0;
+for k=0:N-1
+    % New NLP variable for the control
+    Uk = casadi.MX.sym(['U_' num2str(k)],2);
+    w = {w{:}, Uk};
+    lbw = [lbw; delta_min; M_min];
+    ubw = [ubw;  delta_max; M_max];
+    w0 = [w0;  0;0];
+
+    % Integrate till the end of the interval
+    Fk = F('x0', Xk, 'p', Uk);
+    Xk_end = Fk.xf;
+    J=J+Fk.qf;
+
+    % New NLP variable for state at end of interval
+    Xk = casadi.MX.sym(['X_' num2str(k+1)], 6);
+    w = {w{:}, Xk};
+    lbw = [lbw; -inf; -inf;  -inf; -inf;  -inf; -inf];
+    ubw = [ubw;  inf;  inf;inf;  inf;inf;  inf]; %dati realne ogranicenja
+    w0 = [w0; 0; 0;0;0;0;0];
+
+    % Nedostaje deo za refrencu: 
+%     % Add equality constraint 
+%     g = {g{:}, Xk_end-Xk};
+%     lbg = [lbg; 0; 0];
+%     ubg = [ubg; 0; 0];
+end
+
+
 
