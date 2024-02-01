@@ -1,4 +1,4 @@
-%% Model
+%% Model setup:
 %          model parameters:    %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -13,7 +13,7 @@ friction = 0.9; %friction coeff
 r = 0.3284; % diameter of a wheel 
 Idf = 0.805; % Inertia of front tyres
 Idr = 0.805; % Inerita of rear tyres
-Bd = 0.05; % tyre angular speed damping factor
+Bd = 0.1; % tyre angular speed damping factor
 
 Fzf = b*m*g/2/(a+b)/1000; % [kN] force on front tyres
 Fzr = a*m*g/2/(a+b)/1000; % [kN] force on rear tyres
@@ -124,13 +124,6 @@ v_vctr = casadi.Function('v_vctr', {ydot, xdot, psidot}, ...
                         ,{'ydot', 'xdot', 'psidot'}, {'v_vctr'});
 % longitudal/normal conversion: %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-vl = casadi.Function('vl', {vy, vx, delta}, ...
-                      {vy*sin(delta) + vx*cos(delta)} ...
-                      , {'vy', 'vx', 'delta'}, {'vl'});
-
-vc = casadi.Function('vc', {vy, vx, delta}, ...
-                      {vy*sin(delta) - vx*cos(delta)} ...
-                      , {'vy', 'vx', 'delta'}, {'vc'});
 
 mixing_matrix = casadi.Function('mixing_matrix', ...
     {delta_front, delta_rear}, ...
@@ -194,8 +187,8 @@ slip = casadi.Function('slip', {vx, w, T}, ...
 
 
 alpha = casadi.Function('alpha', {vy, vx}, ...
-                        {atan2(vy, ...
-                               vx)/pi*180}...
+                        {atan2(vx, ...
+                               vy)/pi*180}...
                         , {'vc', 'vl'}, {'alpha'});
 
 
@@ -211,7 +204,7 @@ Fl0 = casadi.Function('Fl0', {s, mu}, ...
                        , {'s', 'mu'}, {'Fl0'});
 
 C = a0;
-D = mu*(a1*Fzr^2 + a2*Fzr);
+D = (a1*Fzr^2 + a2*Fzr);
 B = (a3*sin(a4*atan(Fzr/a5)))/C/D;
 E = a6*Fzr^2 + a7*Fzr + a8;
 Sh = 0;
@@ -260,7 +253,7 @@ state_transition_force = casadi.Function('f_force', ...
            +c*(-forces(1)+forces(3)-forces(5)+forces(7)) ...
            ); ...
        states(2)*sin(states(3)) + states(1)*cos(states(3));...
-       states(2)*cos(states(3)) + states(1)*sin(states(3));...
+       states(2)*cos(states(3)) - states(1)*sin(states(3));...
        1/Idf*(-forces(end-3)*r-control(2)-Bd*states(7));...
        1/Idf*(-forces(end-2)*r-control(3)-Bd*states(8));...
        1/Idr*(-forces(end-1)*r-control(4)-Bd*states(9));...
@@ -280,17 +273,17 @@ state_transition_slip_alpha = casadi.Function('f_slip_alpha', ...
                   Fc0(alpha_vector(1), friction), ...
                   beta(alpha_vector(1), slip_vector(1)) ...
                   ); ...
-     [1, 0]*Fl_Fc(Fl0(slip_vector(1), friction),... 
-                  Fc0(alpha_vector(1), friction), ...
-                  beta(alpha_vector(1), slip_vector(1)) ...
+     [1, 0]*Fl_Fc(Fl0(slip_vector(2), friction),... 
+                  Fc0(alpha_vector(2), friction), ...
+                  beta(alpha_vector(2), slip_vector(2)) ...
                   ); ...
-     [1, 0]*Fl_Fc(Fl0(slip_vector(1), friction),... 
-                  Fc0(alpha_vector(1), friction), ...
-                  beta(alpha_vector(1), slip_vector(1)) ...
+     [1, 0]*Fl_Fc(Fl0(slip_vector(3), friction),... 
+                  Fc0(alpha_vector(3), friction), ...
+                  beta(alpha_vector(3), slip_vector(3)) ...
                   ); ...
-     [1, 0]*Fl_Fc(Fl0(slip_vector(1), friction),... 
-                  Fc0(alpha_vector(1), friction), ...
-                  beta(alpha_vector(1), slip_vector(1)) ...
+     [1, 0]*Fl_Fc(Fl0(slip_vector(4), friction),... 
+                  Fc0(alpha_vector(4), friction), ...
+                  beta(alpha_vector(4), slip_vector(4)) ...
                   ) ...
     ] ...
     ) ...
@@ -319,6 +312,120 @@ state_transition = casadi.Function('f', ...
     , {'states', 'control'},...
     {'dot_states'}...
     );
+
+%% MPC setup:
+h = 0.2; %Horizon in seconds [s]
+N = 10; % prediction horizon
+
+n_controls = length(control);
+state_transition; %nonlinear mapping (state_t, control_t)->state_t+1
+n_states = length(states);
+n_ref = 4; % number of reference signals
+
+% Decision variables (controls)
+U = casadi.SX.sym('U',n_controls,N); 
+
+% parameters (which include the initial state and the reference state)
+P = casadi.SX.sym('P',n_ref + n_states);
+
+% A vector that represents the states over the optimization problem.
+X = casadi.SX.sym('X',n_states,(N+1));
+
+
+obj = 0; % Objective function
+g = [];  % constraints vector
+
+ % weighing matrix (states)
+Q = zeros(n_ref,n_ref); 
+Q(1,1) = 1;Q(2,2) = 5;Q(3,3) = 0.1; Q(4,4)=1;
+
+% weighing matrix (controls)
+R = zeros(n_controls,n_controls); 
+R(1,1) = 0.5; R(2,2) = 0.05; R(3,3) = 0.05; R(4,4) = 0.05; R(5,5) = 0.05;
+
+st  = X(:,1); % initial state
+g = [g;st-P(n_ref+1:end)]; % initial condition constraints
+ref_states = zeros(n_ref, n_states);
+ref_states(1, 2) = 1; ref_states(2, 3) = 1; 
+ref_states(3, 4) = 1; ref_states(4, 5) = 1; 
+
+for k = 1:N
+    st = X(:,k);  con = U(:,k);
+    obj = obj+(ref_states*st-P(1:n_ref))'*Q*(ref_states*st-P(1:n_ref)) ...
+        + con'*R*con; % calculate obj
+    
+    st_next = X(:,k+1);
+    k1 = state_transition(st, con);   % new 
+    k2 = state_transition(st + h/2*k1, con); % new
+    k3 = state_transition(st + h/2*k2, con); % new
+    k4 = state_transition(st + h*k3, con); % new
+    st_next_RK4=st +h/6*(k1 +2*k2 +2*k3 +k4); % new    
+    % f_value = f(st,con);
+    % st_next_euler = st+ (h*f_value);
+    % g = [g;st_next-st_next_euler]; % compute constraints
+    g = [g;st_next-st_next_RK4]; % compute constraints % new
+end
+
+% make the decision variable one column  vector
+OPT_variables = [reshape(X,(N+1)*n_states,1);reshape(U,N*n_controls,1)];
+
+nlp_prob = struct('f', obj, 'x', OPT_variables, 'g', g, 'p', P);
+
+% solver setup:
+opts = struct;
+opts.ipopt.max_iter = 2000;
+opts.ipopt.print_level =0;%0,3
+opts.print_time = 0;
+opts.ipopt.acceptable_tol =1e-8;
+opts.ipopt.acceptable_obj_change_tol = 1e-6;
+
+solver = casadi.nlpsol('solver', 'ipopt', nlp_prob, opts);
+
+
+args = struct;
+
+args.lbg(1:n_states*(N+1)) = 1e-20;  % Equality constraints
+args.ubg(1:n_states*(N+1)) = 1e-20;   % Equality constraints
+
+for i = 1 : n_states
+
+    args.lbx(i:n_states:n_states*(N+1),1) = -2; %state x lower bound
+    args.ubx(i:n_states:n_states*(N+1),1) = 2; %state x upper bound
+end
+
+for i = 1 : n_controls
+    args.lbx(n_states*(N+1)+i:n_controls:n_states*(N+1)+n_controls*N,1) = 0; %v lower bound
+    args.ubx(n_states*(N+1)+i:n_controls:n_states*(N+1)+n_controls*N,1) = 5; %v upper bound
+end
+args.lbx(n_states*(N+1)+1:n_controls:n_states*(N+1)+n_controls*N,1)
+
+% THE SIMULATION LOOP SHOULD START FROM HERE
+%-------------------------------------------
+
+x0 = ones(n_states, 1);    % initial condition.
+xs = [.1 ; .5 ; .5; .1]; % Reference posture.
+
+
+u0 = zeros(N,n_controls);        % two control inputs for each robot
+X0 = repmat(x0,1,N+1)'; % initialization of the states decision variables
+%%
+args.p   = [xs;x0]; % set the values of the parameters vector
+% initial value of the optimization variables
+args.x0  = [reshape(X0',n_states*(N+1),1);reshape(u0',n_controls*N,1)];
+tic
+sol = solver('x0', args.x0, 'lbx', args.lbx, 'ubx', args.ubx,...
+        'lbg', args.lbg, 'ubg', args.ubg,'p',args.p);
+toc
+x = reshape(full(sol.x(1:n_states*(N+1)))',n_states,N+1)'; % get controls only from the solution
+u = reshape(full(sol.x(n_states*(N+1)+1:end))',n_controls,N)'; % get controls only from the solution
+
+args.p = [xs; x(1, :)'];
+tic
+sol = solver('x0', args.x0, 'lbx', args.lbx, 'ubx', args.ubx,...
+        'lbg', args.lbg, 'ubg', args.ubg,'p',args.p);
+toc
+x = reshape(full(sol.x(1:n_states*(N+1)))',n_states,N+1)'; % get controls only from the solution
+u = reshape(full(sol.x(n_states*(N+1)+1:end))',n_controls,N)'; % get controls only from the solution
 
 
 
